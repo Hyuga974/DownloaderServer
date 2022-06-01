@@ -537,10 +537,186 @@ Ce service nous permettra de regrouper Sonarr et Radarr de manière à ne faire 
 
 On peut désormais se rendre sur overserr avec *localhost:5055*
 
-<br>
 
+---
 
 ## II. Docker
+
+Pour configurer le docker c'est beaucoup plus simple que la configuration manuelle.
+
+Il suffit de créer un docker-compose.yml et de l'exécuter.
+
+On va déjà commencer par installer docker.
+
+```sh
+sudo apt-get update
+sudo apt install docker.io
+sudo systemctl start docker
+sudo curl -L "https://github.com/docker/compose/releases/download/1.25.4/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+```
+
+On va maintenant créer un fichier docker-compose.yml dans son dossier `~/docker-services`
+
+```sh
+mkdir ~/docker-services
+touch ~/docker-services/docker-compose.yml
+```
+
+On édite docker-compose.yml
+
+```yml
+version: "2"
+services:
+```
+
+Les différents services :
+
+- Plex :
+
+```yml
+  plex:
+    image: linuxserver/plex:latest
+    container_name: plex
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - VERSION=docker
+    volumes:
+      - ~/docker-services/plex/config:/config
+      - /mnt:/mnt
+    ports:
+      - 32400:32400
+    restart: unless-stopped
+```
+
+- Transmission
+
+```yml
+  transmission:
+    image: linuxserver/transmission
+    container_name: transmission
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/London
+      - TRANSMISSION_WEB_HOME=/combustion-release/ #optional
+    volumes:
+      - ~/docker-services/transmission/config:/config
+      - /mnt/media/torrents:/mnt/media/torrents
+    ports:
+      - 9091:9091
+      - 49153:49153
+      - 49153:49153/udp
+    restart: unless-stopped
+```
+
+> Après l'avoir démarré une première fois, il faut modifier le fichier config settings.json.
+
+```json
+{
+    ...
+    "download-dir": "/mnt/media/torrents/complete",
+    ...
+    "incomplete-dir": "/mnt/media/torrents/incomplete",
+    ...
+    "rpc-host-whitelist-enabled": true,
+    "rpc-password": "some-password",
+    ...
+    "script-torrent-done-filename": "/config/decompress-rar.sh",
+}
+```
+
+et notre script de décompression sera dans le dossier config.
+
+```sh
+echo "[UNRAR SCRIPT START]"
+find $TR_TORRENT_DIR/$TR_TORRENT_NAME -name "*.rar" -execdir unrar e -o- "{}" \;
+```
+
+- Jackett
+
+```yml
+  jackett:
+    image: linuxserver/jackett
+    container_name: jackett
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/London
+      - RUN_OPTS=run options here #optional
+    volumes:
+      - ~/docker-services/jackett/config:/config
+      - /mnt/media/torrents/completed:/downloads
+    ports:
+      - 9117:9117
+    restart: unless-stopped
+```
+
+- Sonarr & Radarr
+
+```yml
+  sonarr:
+    image: linuxserver/sonarr
+    container_name: sonarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=PST
+      - UMASK_SET=022 #optional
+    volumes:
+      - ~/docker-services/sonarr/config:/config
+      - /mnt/media:/mnt/media
+    ports:
+      - 8989:8989
+    restart: unless-stopped
+  radarr:
+    image: linuxserver/radarr
+    container_name: radarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=PST
+    volumes:
+      - ~/docker-services/radarr/config:/config
+      - /mnt/media:/mnt/media
+    ports:
+      - 7878:7878
+    restart: unless-stopped
+```
+
+- Overseerr
+
+```yml
+  overseerr:
+    image: lscr.io/linuxserver/overseerr:latest
+    container_name: overseerr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Paris
+    volumes:
+      - ~/docker-services/overseerr/config:/config
+    ports:
+      - 5055:5055
+    restart: unless-stopped
+```
+
+Super ! On a fini !
+
+Il faut maintenant lancer le docker-compose.yml grace à la commande suivante :
+
+```sh
+docker-compose up --build
+```
+
+Si tout s'est bien passé, on peut faire la configuration des permissions et de la configuration de la communication entre les différents services.
+
+> Note : On peut aussi faire un `docker-compose down` pour fermer tous les services et faire un `docker-compose up -d` pour les relancer.
+
+Passons maintenant à la configuration du backup !
+
+---
 
 ## III. Backup
 
